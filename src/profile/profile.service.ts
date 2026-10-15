@@ -1,71 +1,115 @@
-import { Injectable, NotFoundException, ParseUUIDPipe } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { open, type Database } from 'sqlite';
+import sqlite3 from 'sqlite3';
+import path from 'node:path';
+import type { CreateProfileDto } from './dto/create-profile.dto.js';
+import type { UpdateProfileDto } from './dto/update-profile.dto.js';
+
+type Profile = {
+  id: number;
+  name: string;
+  description: string;
+};
 
 @Injectable()
-export class ProfileService {
-  private profiles = [
-    {
-      id: randomUUID(),
-      name: 'Brianna Watts',
-      description: `Looking for someone to merge with my heart. I’m a full-stack romantic who refactors my feelings until they pass all tests. Bonus points if you can debug my issues while we pair program over coffee. Let’s commit to something beautiful together.`,
-    },
-    {
-      id: randomUUID(),
-      name: 'Jasper Quinn',
-      description: `Seeking a partner in crime to compile my heart. Must be comfortable with the terminal because I only speak fluent bash. Swipe right if you can appreciate a good kernel panic every now and then.`,
-    },
-    {
-      id: randomUUID(),
-      name: 'Leo Park',
-      description: `You think you know VIM? Try Neovim. I'll make your modal dreams come true. Want to escape the matrix and explore the perfect keyboard shortcut for love?`,
-    },
-  ];
+export class ProfileService implements OnModuleInit, OnModuleDestroy {
+  private db!: Database;
 
-  findAll() {
-    return this.profiles;
+  async onModuleInit() {
+    this.db = await open({
+      filename: path.join(process.cwd(), 'database', 'user_profile.db'),
+      driver: sqlite3.Database,
+    });
+
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS userprofile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        description TEXT NOT NULL
+      )
+    `);
   }
 
-  findOne(id: string) {
-    //NotFoundException
+  async onModuleDestroy() {
+    await this.db.close();
+  }
 
-    const profile = this.profiles.find((profile) => profile.id === id);
+  findAll(): Promise<Profile[]> {
+    return this.db.all<Profile[]>(
+      'SELECT id, username AS name, description FROM userprofile',
+    );
+  }
+
+  async findOne(id: number): Promise<Profile> {
+    const profile = await this.db.get<Profile>(
+      'SELECT id, username AS name, description FROM userprofile WHERE id = ?',
+      id,
+    );
 
     if (!profile) {
-      throw new NotFoundException(`the ID ${id} not found`);
+      throw new NotFoundException(`Profile with ID ${id} not found`);
     }
 
     return profile;
   }
 
-  create(post: any) {
-    const addProfile = {
-      id: randomUUID(),
-      ...post,
-    };
+  async create(profile: CreateProfileDto): Promise<Profile> {
+    const result = await this.db.run(
+      'INSERT INTO userprofile (username, description) VALUES (?, ?)',
+      [profile.name, profile.description],
+    );
 
-    this.profiles.push(addProfile);
-    return addProfile;
-  }
-
-  update(id: string, post: any) {
-    const find = this.profiles.find((profile) => profile.id === id);
-    if (!find) {
-      throw new NotFoundException(`the ID ${id} not found`);
+    if (result.lastID === undefined) {
+      throw new Error('SQLite did not return the ID of the inserted profile');
     }
 
-    find.name = post.name;
-    find.description = post.description;
-
-    return find;
+    return this.findOne(result.lastID);
   }
 
-  remove(id: string) {
-    const index = this.profiles.findIndex((profile) => profile.id === id);
+  async update(id: number, profile: UpdateProfileDto): Promise<Profile> {
+    const updates: string[] = [];
+    const values: (string | number)[] = [];
 
-    if (index === -1) {
+    if (profile.name !== undefined) {
+      updates.push('username = ?');
+      values.push(profile.name);
+    }
+
+    if (profile.description !== undefined) {
+      updates.push('description = ?');
+      values.push(profile.description);
+    }
+
+    if (updates.length === 0) {
+      return this.findOne(id);
+    }
+
+    values.push(id);
+    const result = await this.db.run(
+      `UPDATE userprofile SET ${updates.join(', ')} WHERE id = ?`,
+      values,
+    );
+
+    if (result.changes === 0) {
       throw new NotFoundException(`Profile with ID ${id} not found`);
     }
 
-    this.profiles.splice(index, 1);
+    return this.findOne(id);
+  }
+
+  async remove(id: number): Promise<void> {
+    const result = await this.db.run(
+      'DELETE FROM userprofile WHERE id = ?',
+      id,
+    );
+
+    if (result.changes === 0) {
+      throw new NotFoundException(`Profile with ID ${id} not found`);
+    }
   }
 }

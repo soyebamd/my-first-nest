@@ -9,9 +9,7 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
-  ParseUUIDPipe,
   ParseIntPipe,
-  ValidationPipe,
 } from '@nestjs/common';
 
 import { CreateProfileDto } from './dto/create-profile.dto.js';
@@ -19,8 +17,6 @@ import { CreateProfileDto } from './dto/create-profile.dto.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 
 import { ProfileService } from './profile.service.js';
-
-import { randomUUID } from 'crypto';
 
 @Controller('profile')
 export class ProfileController {
@@ -47,7 +43,7 @@ app.get('/profile/', (req, res)=>{})
   /* Getting with ID Param */
 
   @Get('/:id')
-  findOne(@Param('id', ParseUUIDPipe) id: UUID) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.profileService.findOne(id);
   }
 
@@ -64,7 +60,7 @@ app.get('/profile/', (req, res)=>{})
 
   @Put('/:id')
   update(
-    @Param('id', ParseUUIDPipe) id: UUID,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateProfileDto: UpdateProfileDto,
   ) {
     return this.profileService.update(id, updateProfileDto);
@@ -81,8 +77,7 @@ app.get('/profile/', (req, res)=>{})
 
   @Delete('/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', ParseUUIDPipe) id: UUID) {
-    // TODO: Delete the profile with this ID from the database.
+  remove(@Param('id', ParseIntPipe) id: number) {
     return this.profileService.remove(id);
   }
 }
